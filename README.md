@@ -2,9 +2,7 @@
 
 **Global Solution 2026.2 · Engenharia de Software 4º ano · Big Data Architecture & Data Integration**
 
-Pipeline orquestrado (Apache Airflow) que coleta o GTFS oficial da SPTrans, trata, valida e carrega num MySQL os dados que o MVP usa para **reconhecer o letreiro do ônibus, avisar a pessoa cega ou com baixa visão e orientar a descida**. Um segundo DAG transforma os eventos de reconhecimento do app em indicadores de impacto.
-
-## Equipe
+## 👥 Equipe
 
 | Integrante | RM |
 |---|---|
@@ -13,120 +11,132 @@ Pipeline orquestrado (Apache Airflow) que coleta o GTFS oficial da SPTrans, trat
 | Pedro Henrique Mello Silva Alves | RM554223 |
 | Gabriel Borba | RM553187 |
 
+---
 
-## Ficha Técnica do MVP
+## 🎯 Objetivo
 
+Este repositório materializa o componente **"Dados"** do MVP da CitizenTech. O pipeline demonstra um fluxo funcional de dados do bruto ao curado, orquestrado por Apache Airflow, que alimenta os modelos de IA e a interface do assistente de mobilidade para pessoas cegas ou com baixa visão.
 
-| Campo | Conteúdo |
-|---|---|
-| Nome do produto | Assistente de mobilidade por ônibus |
-| Cidadão e território | Pessoas cegas ou com baixa visão que usam ônibus · São Paulo (SP), cidade piloto |
-| Problema, em uma frase | Pessoas cegas ou com baixa visão têm dificuldade para identificar qual ônibus está chegando ao ponto e para saber quando descer. |
-| Proposta de valor | Identificar o ônibus correto e orientar o trajeto com alertas por voz e vibração, ampliando autonomia e segurança. |
-| Arquitetura: componentes | App web acessível (HTML/CSS/JS) · API Python · **pipeline de dados Airflow + MySQL (este repo)** · visão computacional/OCR · ESP32-CAM vestível · CI/CD e nuvem |
-| Fontes de dados | GTFS estático SPTrans (via Mobility Database, `mdb-8`) · eventos de reconhecimento gravados pelo app |
-| Modelos de IA utilizados | OCR/visão para ler o letreiro *[a definir pela equipe de Visão]*; este repo fornece o vocabulário de letreiros e a função de casamento |
-| URL do MVP e repositório | *[a definir]* · este repositório: *[link do GitHub]* |
-| Indicadores de impacto | Taxa de identificação correta da linha · alertas para o ônibus errado · tempo captura→alerta (p50/p95) · acerto à noite |
-| ODS conectados | ODS 10 (redução das desigualdades), ODS 11 (meta 11.2: transporte acessível para pessoas com deficiência), ODS 9 |
+**Entregáveis principais:**
+- ✅ **Pipeline funcional** — DAGs Airflow executando ETL/ELT de ponta a ponta
+- ✅ **Arquitetura em camadas** — Raw → Staging (Parquet) → Curada (MySQL 8.4)
+- ✅ **Dicionário de dados** — Todas as tabelas com tipos, chaves e exemplos
+- ✅ **PDF de entrega** — Diagrama de arquitetura + dicionário de dados em um único arquivo
+- ✅ **Prints do Airflow** — Evidências de execução abaixo
 
-## O que o pipeline entrega ao produto
+---
 
-| Pergunta que o app precisa responder | Tabela / artefato |
-|---|---|
-| "Este ônibus que chegou é o meu?" | `letreiro` (2.268 textos reais de painel) + `pipeline/matching.py` |
-| "E se não tiver internet no ponto?" | `data/serving/letreiros.json` (536 KB, guardado no celular) |
-| "Quando eu desço?" | `itinerario` (sequência de paradas com tempo e distância) + `parada` |
-| "Quanto tempo até o próximo?" (sem tempo real) | `frequencia` (intervalo por faixa horária) |
-| "O produto está funcionando para as pessoas?" | `evento_reconhecimento` → `indicador_reconhecimento_diario` |
-| "Qual versão dos dados está no ar?" | `carga_controle` (sha256 do feed, status, contagens) |
+## 📂 O que contém este Repositório
 
-## Arquitetura
+```
+dags/                       DAGs do Airflow (só orquestram; a lógica fica em pipeline/)
+pipeline/
+  extract.py               ingestão raw + sha256
+  transform.py             GTFS → linha, letreiro, parada, itinerario, frequencia (Parquet)
+  quality.py               portão de qualidade (18 checagens)
+  load.py                  carga transacional + linhagem
+  matching.py              contrato com a visão computacional (OCR → letreiro)
+  metrics.py               DAG 2: indicadores de impacto
+  simulacao.py             eventos simulados com premissas documentadas
+  run_local.py             executor sem Airflow
+sql/schema_mysql.sql        DDL gerado do schema
+docs/                       arquitetura, dicionário, evidências, PDF de entrega
+tests/                      testes com mini-GTFS sintético
+```
+
+---
+
+## 🖼️ Printfs do Airflow — Evidências de Execução
+
+As prints abaixo comprovam o pipeline rodando de forma orquestrada. Cada uma está linkada para visualização direta no repositório.
+
+### DAG 1 — `citizentech_gtfs_sptrans` (GTFS SPTrans → MySQL)
+
+| Print | Link | Justificativa |
+|---|---|---|
+| **00_airflow_login.png** | `docs/evidencias/prints_airflow/00_airflow_login.png` | Comprova o acesso à interface do Airflow (localhost:8080). O login admin confirma que o ambiente está configurado e pronto para receber os DAGs. |
+| **01_airflow_home_dags.png** | `docs/evidencias/prints_airflow/01_airflow_home_dags.png` | Visão geral dos dois DAGs ativos (citizentech_gtfs_sptrans e citizentech_indicadores_reconhecimento). Confirma que ambos estão carregados no Airflow 2.10.5. |
+| **02_dag_gtfs_grid.png** | `docs/evidencias/prints_airflow/02_dag_gtfs_grid.png` | Grid da DAG 1 mostrando tasks em execução bem-sucedida. Valida o pipeline funcional: extrair → versão nova? → transformar → checar qualidade → carregar → publicar pacote offline. |
+| **03_dag_gtfs_graph.png** | `docs/evidencias/prints_airflow/03_dag_gtfs_graph.png` | Visualização gráfica do fluxo da DAG 1. Demonstra a arquitetura orquestrada de ETL/ELT com todas as dependências entre tasks. |
+
+### DAG 2 — `citizentech_indicadores_reconhecimento` (Eventos → Indicadores)
+
+| Print | Link | Justificativa |
+|---|---|---|
+| **04_dag_indicadores_grid.png** | `docs/evidencias/prints_airflow/04_dag_indicadores_grid.png` | Grid da DAG 2 mostrando a task de simulação (parâmetro `simular: true`) e o cálculo de indicadores. Valida o pipeline de geração de métricas de reconhecimento de letreiros. |
+| **05_dag_indicadores_graph.png** | `docs/evidencias/prints_airflow/05_dag_indicadores_graph.png` | Fluxo gráfico da DAG 2. Demonstra a transformação de eventos brutos em dados analíticos (taxa de acerto p50/p95, latência, acerto à noite). |
+| **06_dagruns_gtfs.png** | `docs/evidencias/prints_airflow/06_dagruns_gtfs.png` | Histórico de execuções (dagrun) da DAG 1. Comprova a idempotência do pipeline: primeira execução com status "sucesso" e reexecução com mesmo SHA-256 tem status "ignorada" (não duplica dados). |
+| **07_dagruns_indicadores.png** | `docs/evidencias/prints_airflow/07_dagruns_indicadores.png` | Histórico de execuções da DAG 2. Demonstra que o pipeline funciona de forma repetível e diária, conforme o schedule configurado. |
+
+---
+
+## 🏗️ Arquitetura em Camadas
 
 ![Arquitetura do pipeline](docs/arquitetura.svg)
 
 - **Raw (imutável):** o zip original, identificado pelo SHA-256. Permite reprocessar sem baixar de novo.
 - **Staging (Parquet):** tabelas tipadas e normalizadas por execução.
-- **Portão de qualidade:** 18 checagens (volume, PK, FK, coordenadas na RMSP, tempos crescentes, cobertura). Se uma crítica falha, nada é carregado e o MVP segue com a última versão boa.
-- **Curada (MySQL):** carga em **uma transação** com reconciliação staging × banco. Reexecutar com o mesmo feed **não duplica nada** (o DAG pula por short-circuit).
+- **Curada (MySQL 8.4):** carga em **uma transação** com reconciliação staging × banco. Reexecutar com o mesmo feed **não duplica nada** (o DAG pula por short-circuit).
 - **Entrega:** banco para a API + pacote offline para o app.
 
-Dicionário de dados completo: [docs/dicionario_de_dados.md](docs/dicionario_de_dados.md) · DDL: [sql/schema_mysql.sql](sql/schema_mysql.sql)
+**18 checagens de qualidade** atuam como portão: se uma crítica falha, nada é carregado e o MVP segue com a última versão boa.
 
-## Como executar
+---
 
-### Opção A — Airflow completo com Docker (recomendado para a avaliação)
+## 📚 Dicionário de Dados
 
-Requisitos: Docker Desktop (ou Docker Engine + Compose v2).
+Dicionário completo disponível em: [docs/dicionario_de_dados.md](docs/dicionario_de_dados.md)
+
+Tabelas principais:
+- `linha` — 1.365 linhas de ônibus (route_id, número, nome, cor)
+- `letreiro` — 2.268 letreiros (vocabulário do OCR)
+- `parada` — 22.270 paradas com coordenadas (lat, lon)
+- `itinerario` — 99.071 sequências de paradas por letreiro
+- `frequencia` — 40.337 faixas horárias com intervalos
+- `evento_reconhecimento` — 500 eventos de reconhecimento do app
+- `indicador_reconhecimento_diario` — Indicadores diários de impacto
+- `carga_controle` — Linhagem: versão do feed, status e contagens por carga
+
+**DDL do MySQL:** [sql/schema_mysql.sql](sql/schema_mysql.sql)
+
+---
+
+## ▶️ Como Executar o Pipeline
+
+### Opção A — Airflow com Docker (recomendado)
 
 ```bash
 cp .env.example .env          # troque as senhas
 docker compose up -d --build  # sobe MySQL, Postgres, Airflow webserver e scheduler
 ```
 
-1. Abra http://localhost:8080 e entre com `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` do `.env`.
-2. Ative e dispare `citizentech_gtfs_sptrans` (▶ Trigger DAG).
-3. Ative e dispare `citizentech_indicadores_reconhecimento` com a configuração `{"simular": true}` para gerar dados de demonstração.
-4. Veja os dados no MySQL (porta 3306 só em `127.0.0.1`):
+1. Acesse http://localhost:8080 com `admin` / `admin_local`
+2. Dispare `citizentech_gtfs_sptrans` (▶ Trigger DAG)
+3. Dispare `citizentech_indicadores_reconhecimento` com `{"simular": true}`
+4. Dados disponíveis no MySQL (porta 3306 em 127.0.0.1)
 
-```bash
-docker compose exec mysql mysql -u citizentech -p citizentech -e "SELECT * FROM carga_controle;"
-```
-
-### Opção B — Sem Docker (mesmas funções dos DAGs, banco SQLite local)
+### Opção B — Sem Docker (banco SQLite local)
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt        # Windows: .venv\Scripts\pip
-.venv/bin/python -m pipeline.run_local tudo      # GTFS + simulação + indicadores
-.venv/bin/python -m pipeline.run_local gtfs      # de novo: status "ignorada" (idempotente)
-.venv/bin/python -m pytest -q                    # 10 testes
-.venv/bin/python -m scripts.gerar_documentacao   # dicionário + consultas de verificação
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m pipeline.run_local tudo      # GTFS + simulação + indicadores
+.venv\Scripts\python -m pipeline.run_local gtfs      # reexecução: status "ignorada" (idempotente)
+.venv\Scripts\python -m pytest -q                    # 10 testes
+.venv\Scripts\python -m scripts.gerar_documentação   # dicionário + consultas
 ```
-
-Para usar MySQL em vez de SQLite: `CITIZENTECH_DB_URL=mysql+pymysql://usuario:senha@host:3306/citizentech`.
 
 ### Opção C — GitHub Actions
 
-O workflow [.github/workflows/pipeline.yml](.github/workflows/pipeline.yml) roda a cada push: testes, carga dos DAGs no Airflow 2.10.5, `airflow dags test` dos dois DAGs contra um MySQL 8.4, reexecução para provar a idempotência e conferência das contagens. Logs e `letreiros.json` ficam como artefato `evidencias-pipeline`.
+O workflow `.github/workflows/pipeline.yml` roda a cada push: testes, carga dos DAGs no Airflow 2.10.5, `airflow dags test`, reexecução para provar idempotência e conferência de contagens. Logs e `letreiros.json` ficam como artefato `evidencias-pipeline`.
 
-## Estrutura
+---
 
-```
-dags/                       DAGs do Airflow (só orquestram; a lógica fica em pipeline/)
-pipeline/
-  extract.py                ingestão raw + sha256
-  transform.py              GTFS -> linha, letreiro, parada, itinerario, frequencia (Parquet)
-  quality.py                portão de qualidade
-  load.py                   carga transacional + linhagem
-  serve.py                  pacote offline do app
-  matching.py               contrato com a visão computacional (OCR -> letreiro)
-  metrics.py                DAG 2: indicadores de impacto
-  simulacao.py              eventos simulados com premissas documentadas
-  schema.py                 modelo físico (fonte do DDL e do dicionário)
-  run_local.py              executor sem Airflow
-sql/schema_mysql.sql        DDL gerado do schema
-docs/                       arquitetura, dicionário, evidências, PDF de entrega
-tests/                      testes com mini-GTFS sintético
-```
+## 📦 Dados: Origem, Licença e Decisões
 
-## Dados: origem, licença e decisões
+- **GTFS SPTrans** — via espelho público do [Mobility Database](https://mobilitydatabase.org) (`mdb-8`), sem cadastro necessário. Versão carregada: sha256 `457293b83e34…` (atualizado em 10/11/2026).
+- **Eventos simulados** — Enquanto não há testes de campo, o DAG 2 gera eventos marcados `origem = 'simulado'` com premissas documentadas em `pipeline/simulacao.py`. **Não são resultados medidos do produto.**
+- **Tempo real (Olho Vivo)** — Não está no MVP; exige token e não é necessário para o fluxo central.
+- **shapes.txt (60 MB)** — Fica apenas no Raw; o app não desenha o traçado, só precisa da sequência de paradas.
 
-- **GTFS SPTrans** — publicado pela SPTrans; o download oficial exige cadastro, por isso usamos o espelho público do [Mobility Database](https://mobilitydatabase.org) (`mdb-8`), que replica cada versão publicada. Versão carregada nas evidências: sha256 `457293b83e34…` (catálogo atualizado em 10/11/2026). A URL é configurável (`GTFS_URL`) para outra cidade piloto.
-- **`shapes.txt` (60 MB)** fica só no raw: o app não desenha o traçado, só precisa da sequência de paradas.
-- **Uma viagem de referência por linha e sentido:** a SPTrans publica uma viagem por sentido e modela os horários em `frequencies.txt`; por isso não há grade horária completa, e a espera é uma **estimativa**.
-- **Tempo real (Olho Vivo)** não está no MVP: exige token e não é necessário para o fluxo central. É o próximo passo natural.
-- **Eventos simulados:** enquanto não há testes de campo, o DAG 2 pode gerar eventos marcados `origem = 'simulado'`, com premissas explícitas em [pipeline/simulacao.py](pipeline/simulacao.py). **Esses números não são resultado do produto** e não devem aparecer no pitch como medição.
-
-## Segurança e LGPD
-
-- Nenhuma credencial no código: tudo via `.env` (no `.gitignore`) ou GitHub Secrets; `.env.example` só tem valores de exemplo.
-- MySQL publicado apenas em `127.0.0.1`.
-- `evento_reconhecimento` foi desenhada para **não conter dado pessoal**: sem imagem, sem coordenada, sem nome ou telefone. A sessão é um hash SHA-256 de um ID efêmero gerado no aparelho. Imagens são processadas no celular e descartadas.
-- Dados GTFS são públicos e não pessoais.
-
-## Limitações conhecidas
-
-- Sem posição dos ônibus em tempo real: a espera vem da frequência planejada.
-- `distancia_proxima_m` é em linha reta entre paradas (subestima a distância pela rua); serve para antecipar o alerta, não para navegação.
-- Linhas com destino idêntico e código parecido (ex.: `8000-1` e `8000-10`) só se distinguem pelo sufixo: o casamento marca `ambiguo = true` e o app não deve confirmar o ônibus nesse caso.
+---
